@@ -188,7 +188,10 @@
 
     <p id="senderError" class="hidden text-[var(--live)] text-sm mt-4 mono"></p>
 
-    <div class="flex justify-center mt-6">
+    <div class="flex justify-center gap-3 mt-6">
+      <button id="muteSenderBtn" class="btn btn-outline rounded-xl px-6 py-3 font-semibold text-sm flex items-center gap-2">
+        <span id="muteSenderIcon">🎙️</span> <span id="muteSenderLabel">Mute Mic</span>
+      </button>
       <button id="stopSenderBtn" class="btn btn-danger rounded-xl px-6 py-3 font-semibold text-sm">
         Stop Streaming
       </button>
@@ -222,7 +225,10 @@
 
     <p id="viewerError" class="hidden text-[var(--live)] text-sm mt-4 mono"></p>
 
-    <div class="flex justify-center mt-6">
+    <div class="flex justify-center gap-3 mt-6">
+      <button id="muteViewerBtn" class="btn btn-outline rounded-xl px-6 py-3 font-semibold text-sm flex items-center gap-2">
+        <span id="muteViewerIcon">🔊</span> <span id="muteViewerLabel">Mute</span>
+      </button>
       <button id="disconnectViewerBtn" class="btn btn-danger rounded-xl px-6 py-3 font-semibold text-sm">
         Disconnect
       </button>
@@ -269,6 +275,9 @@
   const senderStatusLabel = el("senderStatusLabel");
   const senderError = el("senderError");
   const stopSenderBtn = el("stopSenderBtn");
+  const muteSenderBtn = el("muteSenderBtn");
+  const muteSenderIcon = el("muteSenderIcon");
+  const muteSenderLabel = el("muteSenderLabel");
 
   const remoteVideo = el("remoteVideo");
   const viewerRoomLabel = el("viewerRoomLabel");
@@ -278,6 +287,9 @@
   const viewerStatusLabel = el("viewerStatusLabel");
   const viewerError = el("viewerError");
   const disconnectViewerBtn = el("disconnectViewerBtn");
+  const muteViewerBtn = el("muteViewerBtn");
+  const muteViewerIcon = el("muteViewerIcon");
+  const muteViewerLabel = el("muteViewerLabel");
 
   const connIndicator = el("connIndicator");
   const connDot = el("connDot");
@@ -455,6 +467,10 @@
     senderStatusLabel.textContent = 'waiting for viewer…';
     senderStatusLabel.classList.add('text-[var(--muted)]');
     senderError.classList.add('hidden');
+    muteSenderIcon.textContent = '🎙️';
+    muteSenderLabel.textContent = 'Mute Mic';
+    muteSenderBtn.classList.remove('btn-danger');
+    muteSenderBtn.classList.add('btn-outline');
 
     // 1. Get camera/mic
     let stream;
@@ -545,6 +561,25 @@
 
   stopSenderBtn.addEventListener('click', backToLobby);
 
+  muteSenderBtn.addEventListener('click', () => {
+    if(!state.localStream) return;
+    const audioTracks = state.localStream.getAudioTracks();
+    if(!audioTracks.length) return;
+    const nowEnabled = !audioTracks[0].enabled;
+    audioTracks.forEach(t => t.enabled = nowEnabled);
+    if(nowEnabled){
+      muteSenderIcon.textContent = '🎙️';
+      muteSenderLabel.textContent = 'Mute Mic';
+      muteSenderBtn.classList.remove('btn-danger');
+      muteSenderBtn.classList.add('btn-outline');
+    } else {
+      muteSenderIcon.textContent = '🔇';
+      muteSenderLabel.textContent = 'Unmute Mic';
+      muteSenderBtn.classList.remove('btn-outline');
+      muteSenderBtn.classList.add('btn-danger');
+    }
+  });
+
   // ================= VIEWER FLOW =================
   async function startViewer(roomCode){
     state.role = 'viewer';
@@ -559,6 +594,11 @@
     viewerStatusLabel.textContent = 'waiting for sender…';
     viewerWaiting.classList.remove('hidden');
     viewerError.classList.add('hidden');
+    remoteVideo.muted = false;
+    muteViewerIcon.textContent = '🔊';
+    muteViewerLabel.textContent = 'Mute';
+    muteViewerBtn.classList.remove('btn-danger');
+    muteViewerBtn.classList.add('btn-outline');
 
     const pc = createPeerConnection((candidate) => {
       state.channel.send({
@@ -626,6 +666,21 @@
   }
 
   disconnectViewerBtn.addEventListener('click', backToLobby);
+
+  muteViewerBtn.addEventListener('click', () => {
+    remoteVideo.muted = !remoteVideo.muted;
+    if(remoteVideo.muted){
+      muteViewerIcon.textContent = '🔇';
+      muteViewerLabel.textContent = 'Unmute';
+      muteViewerBtn.classList.remove('btn-outline');
+      muteViewerBtn.classList.add('btn-danger');
+    } else {
+      muteViewerIcon.textContent = '🔊';
+      muteViewerLabel.textContent = 'Mute';
+      muteViewerBtn.classList.remove('btn-danger');
+      muteViewerBtn.classList.add('btn-outline');
+    }
+  });
 
   // ================= LOBBY WIRING =================
   function validateAndGetCode(){
