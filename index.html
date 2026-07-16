@@ -50,6 +50,7 @@
     transition: transform .15s ease, box-shadow .15s ease, background-color .15s ease, border-color .15s ease;
   }
   .btn:active{ transform: scale(0.97); }
+  .btn:disabled{ opacity: 0.5; cursor: not-allowed; transform:none; }
   .btn-primary{
     background: var(--signal);
     color:#06201d;
@@ -188,9 +189,12 @@
 
     <p id="senderError" class="hidden text-[var(--live)] text-sm mt-4 mono"></p>
 
-    <div class="flex justify-center gap-3 mt-6">
+    <div class="flex justify-center gap-3 mt-6 flex-wrap">
       <button id="muteSenderBtn" class="btn btn-outline rounded-xl px-6 py-3 font-semibold text-sm flex items-center gap-2">
         <span id="muteSenderIcon">🎙️</span> <span id="muteSenderLabel">Mute Mic</span>
+      </button>
+      <button id="flipCameraBtn" class="btn btn-outline rounded-xl px-6 py-3 font-semibold text-sm flex items-center gap-2">
+        <span>🔄</span> <span>Flip Camera</span>
       </button>
       <button id="stopSenderBtn" class="btn btn-danger rounded-xl px-6 py-3 font-semibold text-sm">
         Stop Streaming
@@ -278,6 +282,7 @@
   const muteSenderBtn = el("muteSenderBtn");
   const muteSenderIcon = el("muteSenderIcon");
   const muteSenderLabel = el("muteSenderLabel");
+  const flipCameraBtn = el("flipCameraBtn");
 
   const remoteVideo = el("remoteVideo");
   const viewerRoomLabel = el("viewerRoomLabel");
@@ -307,6 +312,8 @@
     pendingIceQueue: [],
     remoteDescSet: false,
     peerPresent: false,
+    facingMode: 'user',
+    isFlippingCamera: false,
   };
 
   function genClientId(){
@@ -471,11 +478,15 @@
     muteSenderLabel.textContent = 'Mute Mic';
     muteSenderBtn.classList.remove('btn-danger');
     muteSenderBtn.classList.add('btn-outline');
+    state.facingMode = 'user';
 
     // 1. Get camera/mic
     let stream;
     try{
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: state.facingMode },
+        audio: true
+      });
     }catch(err){
       showSenderError('Camera/microphone access was denied or unavailable. Please allow permissions and try again.');
       setTopConn('error');
@@ -560,6 +571,50 @@
   }
 
   stopSenderBtn.addEventListener('click', backToLobby);
+
+  flipCameraBtn.addEventListener('click', async () => {
+    if(!state.localStream || !state.pc || state.isFlippingCamera) return;
+    state.isFlippingCamera = true;
+    flipCameraBtn.disabled = true;
+
+    const newFacingMode = state.facingMode === 'user' ? 'environment' : 'user';
+    let newStream;
+    try{
+      newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: newFacingMode },
+        audio: false
+      });
+    }catch(err){
+      showSenderError('Could not switch camera. Your device may only have one camera, or access was blocked.');
+      state.isFlippingCamera = false;
+      flipCameraBtn.disabled = false;
+      return;
+    }
+
+    const newVideoTrack = newStream.getVideoTracks()[0];
+    const oldVideoTrack = state.localStream.getVideoTracks()[0];
+
+    try{
+      const sender = state.pc.getSenders().find(s => s.track && s.track.kind === 'video');
+      if(sender){
+        await sender.replaceTrack(newVideoTrack);
+      }
+    }catch(e){
+      console.error('replaceTrack failed', e);
+    }
+
+    // Swap track into the local stream so the preview + future references stay in sync
+    if(oldVideoTrack){
+      state.localStream.removeTrack(oldVideoTrack);
+      oldVideoTrack.stop();
+    }
+    state.localStream.addTrack(newVideoTrack);
+    localVideo.srcObject = state.localStream;
+
+    state.facingMode = newFacingMode;
+    state.isFlippingCamera = false;
+    flipCameraBtn.disabled = false;
+  });
 
   muteSenderBtn.addEventListener('click', () => {
     if(!state.localStream) return;
