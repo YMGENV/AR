@@ -1,4 +1,4 @@
-<!-- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -6,6 +6,7 @@
 <title>Wavecast — Live Room Streaming</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -261,6 +262,77 @@
     ]
   };
 
+  // ---------- Socket.io realtime server ----------
+  const SOCKET_SERVER_URL = "https://ar-2sus.onrender.com";
+  let socket = null;
+
+  function connectSocket(roomCode, deviceType){
+    if(socket){
+      try{ socket.disconnect(); }catch(e){}
+    }
+
+    socket = io(SOCKET_SERVER_URL, {
+      transports: ['websocket', 'polling']
+    });
+
+    socket.on('connect', () => {
+      console.log('[socket] connected:', socket.id);
+      socket.emit('join-room', { roomCode, deviceType });
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('[socket] disconnected:', reason);
+    });
+
+    socket.on('connect_error', (err) => {
+      console.error('[socket] connection error:', err.message || err);
+    });
+
+    // Incoming data relayed from the other device(s) in the room
+    socket.on('receive-payload', (data) => {
+      handleIncomingPayload(data);
+    });
+
+    // Room membership / status changes (e.g. peer joined/left)
+    socket.on('room-updated', (data) => {
+      handleRoomUpdate(data);
+    });
+
+    return socket;
+  }
+
+  function disconnectSocket(){
+    if(socket){
+      try{ socket.disconnect(); }catch(e){}
+      socket = null;
+    }
+  }
+
+  // Send real-time data to the rest of the room
+  function sendPayload(data){
+    if(!socket || !socket.connected){
+      console.warn('[socket] cannot send payload — not connected');
+      return;
+    }
+    socket.emit('send-payload', {
+      roomCode: state.roomCode,
+      ...data
+    });
+  }
+
+  // Hook: called whenever data arrives from another device in the room.
+  // Wire this up to whatever live UI elements need to stay in sync.
+  function handleIncomingPayload(data){
+    console.log('[socket] receive-payload:', data);
+  }
+
+  // Hook: called whenever the server reports a change in room state
+  // (e.g. sender/viewer connected or disconnected). Wire this up to
+  // your connection indicators / status labels as needed.
+  function handleRoomUpdate(data){
+    console.log('[socket] room-updated:', data);
+  }
+
   // ---------- DOM ----------
   const el = (id) => document.getElementById(id);
 
@@ -358,6 +430,7 @@
 
   // ---------- Cleanup ----------
   function cleanup(){
+    disconnectSocket();
     try{
       if(state.pc){
         state.pc.ontrack = null;
@@ -479,6 +552,9 @@
     muteSenderBtn.classList.remove('btn-danger');
     muteSenderBtn.classList.add('btn-outline');
     state.facingMode = 'user';
+
+    // Connect to the realtime Socket.io server for this room
+    connectSocket(roomCode, 'sender');
 
     // 1. Get camera/mic
     let stream;
@@ -655,6 +731,9 @@
     muteViewerBtn.classList.remove('btn-danger');
     muteViewerBtn.classList.add('btn-outline');
 
+    // Connect to the realtime Socket.io server for this room
+    connectSocket(roomCode, 'viewer');
+
     const pc = createPeerConnection((candidate) => {
       state.channel.send({
         type: 'broadcast',
@@ -775,4 +854,4 @@
 })();
 </script>
 </body>
-</html> -->
+</html>
